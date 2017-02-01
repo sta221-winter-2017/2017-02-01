@@ -1,0 +1,379 @@
+---
+title: "STA221"
+author: "Neil Montgomery"
+date: "Last edited: `r format(Sys.time(), '%Y-%m-%d %H:%M')`"
+output: 
+  beamer_presentation:
+    keep_tex: TRUE
+    incremental: TRUE
+    df_print: tibble
+    fig_caption: FALSE
+classoption: aspectratio=169
+header-includes:
+- \newcommand{\ve}{\varepsilon}
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE,
+                      dev='pdf', fig.width=5, fig.asp=0.618, fig.align='center')
+options(tibble.width=70, scipen = 999, tibble.print_min=5)
+library(tidyverse)
+library(readxl)
+```
+
+
+## erratum; and a comment
+
+\pause The formula for the slope estimator $b_1$ turns out to be (corrected from class!):
+$$b_1 = \frac{\sum (x_i - \overline x)(y_i - \overline y)}{{\sum (x_i - \overline{x})^2}} = \frac{S_{xy}}{S_{xx}}$$
+
+\pause Recall the simple regression model:
+$$y = \beta_0 + \beta_1 x + \ve$$
+What is random and what is fixed?
+
+* $\beta_0$ and $\beta_1$ are fixed model parameters
+
+* the $x$ values are treated as fixed (even if they aren't)
+
+* the error $\ve$ is random
+
+* therefore, $y$ is random (as the sum of a fixed part and a random part)
+
+## the estimators $b_0$ and $b_1$ are also random
+
+The intercept and slope parameter estimates are functions of the $y$ and $x$.
+
+\pause Since the $y$ are considered random, so are $b_0$ and $b_1$. 
+
+\pause What properties do they have? By simulation, and by examination of the formulae we will determine these properties. The properties of interest are:
+
+* their distributions
+
+* their means and variances
+
+## review of model assumptions, plus a new one - I
+
+In a simple regression analysis, we need:
+
+* an actual linear relationship between $y$ and $x$ 
+    + check using scatterplot; *another more sensitive plot can be used TBA*
+    + violation of this requirement is **fatal** to any analysis.
+    + transforming one or both variables is a possible remedy.
+    
+* independent observations in the dataset
+    + hard to verify---usually assumed.
+    + one type of non-independence can sometimes be detected by plotting values versus time or the order in which they were observed.
+    + violation could be **fatal** but possibly not
+    + "time series" methods are one way to deal with one type of non-independence.
+
+## review of model assumptions, plus a new one - II
+
+* the amount of variation (up and down) around the line needs to be constant
+    + check using a special scatterplot involving the residuals, TBA
+    + violation is **fatal**
+    + transformation of variables and more sophisticated models are possible remedies
+    
+* NEW the error should follow a normal distribution
+    + check using a normal quantile plot of the residuals
+    + violation is **not fatal*** as long as the sample size is "large enough"
+    
+\pause These two assumptions can be rolled into one statement:
+$$ \ve \sim N(0, \sigma)$$
+    
+\pause \* with one exception TBA
+
+
+## simulation for investigating $b_0$ and $b_1$
+
+The properties of the slope parameter estimator $b_1$ is of most interest.
+
+* What is its average value, variation, distribution?
+
+* What factors affect the accuracy of the estimator?
+
+\pause Compare these issues with the simpler situation in which $\overline X$ is used to estimate $\mu$, etc.
+
+\pause First, we'll look at the average value of $b_0$, using simulation. To do this I will start with a *fully known theoretical linear model*:
+$$y = 2 + 0.75 x + \ve$$
+with $\ve \sim N(0,1)$.
+
+\pause I will simulate fake datasets of size $n=50$ from this model, compute the regression line for each dataset, and see what happens. 
+
+## e.g. plots of four samples
+
+```{r}
+# Population 1
+beta_0 <- 2
+beta_1 <- 0.75
+sigma <- 1
+k <- 100000
+x <- seq(-0.5, 3, length.out = k)
+pop_1 <- data_frame(x = x) %>% 
+  mutate(y = beta_0 + beta_1*x + rnorm(k, 0, sigma))
+```
+
+```{r, warning=FALSE}
+n <- 50
+samples_4 <- pop_1 %>% 
+  sample_n(size = 4*n) %>% 
+  mutate(Sample=factor(paste("Sample", rep(1:4, each=n))))
+
+samples_4 %>% 
+  ggplot(aes(x=x,y=y)) + geom_point() + geom_smooth(method = "lm", se=FALSE) + 
+  coord_cartesian(xlim=c(0.5, 3), ylim=c(-0.1,6.1)) + facet_wrap(~Sample, nrow=2)
+
+
+```
+
+## properties of $b_1$ from 1000 samples
+
+I would like to investigate the distribution of $b_1$ using simulation. So I will simulate 1000 replications, and see what happens. 
+
+```{r, cache=TRUE}
+k <- 1000
+samples_1000 <- pop_1 %>% 
+  sample_n(n*k, replace=TRUE) %>% 
+  mutate(Sample=factor(paste("Sample", rep(1:k, each=n))))
+
+library(broom)
+sample_fits <- samples_1000 %>% 
+  group_by(Sample) %>% 
+  do(fit_sample = lm(y ~ x, data = .))
+
+sample_fits_results <- tidy(sample_fits, fit_sample)
+```
+
+Here is a numerical summary of the 1000 simulated $b_1$ (and $b_0$ as well, since I have them):
+
+```{r, results='asis'}
+library(xtable)
+sim_means <- sample_fits_results %>% 
+  group_by(term) %>% 
+  summarize(Average=mean(estimate), SD=sd(estimate)) 
+
+print(xtable(sim_means, digits=5), comment=FALSE, include.rownames = FALSE)
+```
+(Note: these numbers *change* every time I render the lecture notes - the simulation is embedded right in them.)
+
+Conclusion: the average values of $b_1$ (and $b_0$) are the true values $\beta_1$ (and $\beta_0$).
+
+## histogram of the simulated $b_1$
+
+```{r, fig.width=4}
+sample_fits_results %>% 
+  filter(term=="x") %>% 
+  ggplot(aes(x=estimate, y=..density..)) + geom_histogram(bins=30) + geom_density(adjust=1.5, fill="blue", alpha=0.1)
+```
+Looks symmetric and bell-shaped. Perhaps they have a normal distribution?
+
+## change $\sigma$ from 1 to 0.1
+
+I will simulate again, but this time with $\ve \sim N(0, 0.1)$. Four example plots:
+
+```{r}
+# Population 2
+beta_0 <- 2
+beta_1 <- 0.75
+sigma <- 0.1
+k <- 100000
+x <- seq(-0.5, 3, length.out = k)
+pop_2 <- data_frame(x = x) %>% 
+  mutate(y = beta_0 + beta_1*x + rnorm(k, 0, sigma))
+```
+
+```{r, warning=FALSE, fig.width=3.8}
+n <- 50
+samples_4_2 <- pop_2 %>% 
+  sample_n(size = 4*n) %>% 
+  mutate(Sample=factor(paste("Sample", rep(1:4, each=n))))
+
+samples_4_2 %>% 
+  ggplot(aes(x=x,y=y)) + geom_point() + geom_smooth(method = "lm", se=FALSE) + 
+  coord_cartesian(xlim=c(0.5, 3), ylim=c(-0.1,6.1)) + facet_wrap(~Sample, nrow=2)
+```
+
+## properties of $b_1$ from 1000 samples ($\sigma=0.1$ version)
+
+```{r, cache=TRUE}
+k <- 1000
+samples_1000_2 <- pop_2 %>% 
+  sample_n(n*k, replace=TRUE) %>% 
+  mutate(Sample=factor(paste("Sample", rep(1:k, each=n))))
+
+library(broom)
+sample_fits_2 <- samples_1000_2 %>% 
+  group_by(Sample) %>% 
+  do(fit_sample = lm(y ~ x, data = .))
+
+sample_fits_results_2 <- tidy(sample_fits_2, fit_sample)
+```
+
+The averages and SDs of the 1000 estimators:
+
+```{r, results='asis'}
+library(xtable)
+sim_means_2 <- sample_fits_results_2 %>% 
+  group_by(term) %>% 
+  summarize(Average=mean(estimate), SD=sd(estimate)) 
+
+print(xtable(sim_means_2, digits=5), comment=FALSE, include.rownames = FALSE)
+```
+
+The histogram looks the same.
+
+Conclusion: when the *inherent underlying noise is smaller* the parameter estimators are *more accurate*. 
+
+## put $\sigma$ back to 1; increase the sample size to $n=200$
+
+Four sample plots:
+
+```{r, warning=FALSE, fig.width=3.8}
+n <- 200
+samples_4_3 <- pop_1 %>% 
+  sample_n(size = 4*n) %>% 
+  mutate(Sample=factor(paste("Sample", rep(1:4, each=n))))
+
+samples_4_3 %>% 
+  ggplot(aes(x=x,y=y)) + geom_point() + geom_smooth(method = "lm", se=FALSE) + 
+  coord_cartesian(xlim=c(0.5, 3), ylim=c(-0.1,6.1)) + facet_wrap(~Sample, nrow=2)
+```
+
+## properties of $b_1$ from 1000 samples ($n=200$ version)
+
+```{r, cache=TRUE}
+k <- 1000
+n <- 200
+samples_1000_3 <- pop_1 %>% 
+  sample_n(n*k, replace=TRUE) %>% 
+  mutate(Sample=factor(paste("Sample", rep(1:k, each=n))))
+
+library(broom)
+sample_fits_3 <- samples_1000_3 %>% 
+  group_by(Sample) %>% 
+  do(fit_sample = lm(y ~ x, data = .))
+
+sample_fits_results_3 <- tidy(sample_fits_3, fit_sample)
+```
+
+The averages and SDs of the 1000 estimators:
+
+```{r, results='asis'}
+library(xtable)
+sim_means_3 <- sample_fits_results_3 %>% 
+  group_by(term) %>% 
+  summarize(Average=mean(estimate), SD=sd(estimate)) 
+
+print(xtable(sim_means_3, digits=5), comment=FALSE, include.rownames = FALSE)
+```
+
+The histogram looks the same.
+
+Conclusion: when the *sample size is larger* the parameter estimators are *more accurate*. 
+
+## back to $n=50$; properties of $b_1$ when the $x$ values are less spread out
+
+This one is a little more subtle. It turns out the $x$ values affect the accuracy of the parameter estimates. I re-simulate with less spread in the $x$ values. Four sample plots with $x$ values 4 times "less spread out":
+
+```{r}
+# Population 3
+beta_0 <- 2
+beta_1 <- 0.75
+sigma <- 1
+k <- 100000
+x <- seq(-0.5 + 1.3125, 3 - 1.3125, length.out = k)
+pop_3 <- data_frame(x = x) %>% 
+  mutate(y = beta_0 + beta_1*x + rnorm(k, 0, sigma))
+```
+
+```{r, warning=FALSE, fig.width=3.8}
+n <- 50
+samples_4_3 <- pop_3 %>% 
+  sample_n(size = 4*n) %>% 
+  mutate(Sample=factor(paste("Sample", rep(1:4, each=n))))
+
+samples_4_3 %>% 
+  ggplot(aes(x=x,y=y)) + geom_point() + geom_smooth(method = "lm", se=FALSE) + 
+  coord_cartesian(xlim=c(0.5, 3), ylim=c(-0.1,6.1)) + facet_wrap(~Sample, nrow=2)
+```
+
+## properties of $b_1$ ($x$ less spread version)
+
+```{r, cache=TRUE}
+k <- 1000
+n <- 50
+samples_1000_4 <- pop_3 %>% 
+  sample_n(n*k, replace=TRUE) %>% 
+  mutate(Sample=factor(paste("Sample", rep(1:k, each=n))))
+
+library(broom)
+sample_fits_4 <- samples_1000_4 %>% 
+  group_by(Sample) %>% 
+  do(fit_sample = lm(y ~ x, data = .))
+
+sample_fits_results_4 <- tidy(sample_fits_4, fit_sample)
+```
+
+The averages and SDs of the 1000 estimators:
+
+```{r, results='asis'}
+library(xtable)
+sim_means_4 <- sample_fits_results_4 %>% 
+  group_by(term) %>% 
+  summarize(Average=mean(estimate), SD=sd(estimate)) 
+
+print(xtable(sim_means_4, digits=5), comment=FALSE, include.rownames = FALSE)
+```
+
+The histogram looks the same.
+
+Conclusion: when the *$x$ values are less spread out* the parameter estimators are *less accurate*. 
+
+## statistical properties of $b_1$
+
+Start with the basic simple linear regression model:
+$$y = \beta_0 + \beta_1 x + \ve$$
+in which the error follows a $N(0,\sigma)$ distribution. 
+
+The slope estimator $b_1$ turns out to follow a normal distribtion with mean $\beta_1$ and standard deviation:
+$$\frac{\sigma}{\sqrt{S_{xx}}}$$
+
+(Recall $S_{xx} = \sum(x_i - \overline x)^2$)
+
+(Note: there is a typo on the first formula in section 24.2 - the $s_x$ should not be under the $\sqrt{\ \ }$.)
+
+## statistical properties of $b_1$
+
+Therefore we have:
+$$\frac{b_1 - \beta_1}{{\sigma} / {\sqrt{S_{xx}}}} \sim N(0,1)$$
+
+and p-values and confidence intervals come from this---BAM we're done.
+
+\pause Except we would never know the true value of $\sigma$. This is the third simple regression parameter---a nuisance we'll have to deal with.
+
+\pause We can estimate $\sigma$ using the "average" of the squared residuals:
+$$s_e = \frac{\sum (y_i - \hat y_i)^2}{n-2}$$
+
+## statistical properties of $b_1$
+
+Who wants to guess what distribution this will have:
+
+$$\frac{b_1 - \beta_1}{{s_e} / {\sqrt{S_{xx}}}} \sim \ ???$$
+
+## hypothesis testing for $\beta_1$
+
+The principal hypothesis test concerns whether there is any linear relationship at all between $x$ and $y$. The null hypothesis immediately presents itself:
+
+$$H_0: \beta_1 = 0$$
+
+\pause And it works the same way any other hypothesis test works. Use the data to compute:
+$$\frac{b_1 - 0}{{s_e} / {\sqrt{S_{xx}}}}$$
+and get the probability of being "further away" from $H_0$, according to the ??? distribution.
+
+## example - body fat versus weight
+
+```{r}
+bodyfat <- read_csv("Body_fat.csv")
+bodyfat %>% 
+  ggplot(aes(x=Weight, y=`Pct BF`)) + geom_point()
+```
+
